@@ -23,7 +23,9 @@ public:
         cv::Mat camera_matrix, 
         cv::Mat distortion_coeffs);
 
-    std::optional<Eigen::Isometry3d> process(const cv::Mat& frame, cv::Mat& annotated);
+    std::optional<gtsam::Pose3> process(
+        const cv::Mat& frame,
+        cv::Mat& annotated);
 
     double board_height() const;
 
@@ -35,12 +37,12 @@ private:
         std::vector<cv::Point2f>& charuco_corners,
         std::vector<int>& charuco_ids);
     
-    std::optional<Eigen::Isometry3d> estimate_board_pose(
+    std::optional<gtsam::Pose3> estimate_board_pose(
         cv::Mat& annotated,
         std::vector<cv::Point2f>& charuco_corners,
         std::vector<int>& charuco_ids);
 
-    void draw_board_pose(const Eigen::Isometry3d& pose, cv::Mat& image) const;
+    void draw_board_pose(const gtsam::Pose3& pose, cv::Mat& image) const;
 
     cv::Ptr<cv::aruco::DetectorParameters> params_ = cv::aruco::DetectorParameters::create();
     cv::Ptr<cv::aruco::CharucoBoard> board_;

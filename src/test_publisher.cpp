@@ -43,7 +43,7 @@ TestPublisherNode::TestPublisherNode()
 :
     rclcpp::Node("pose_estimator_node")
 {
-    timer_ = this->create_wall_timer(std::chrono::milliseconds(10),
+    timer_ = this->create_wall_timer(std::chrono::milliseconds(1000),
         std::bind(&TestPublisherNode::timer_callback, this));
     
     camera_info_pub_ = create_publisher<sensor_msgs::msg::CameraInfo>("/pose_estimator/test_camera/camera_info", 1);

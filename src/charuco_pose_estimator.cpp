@@ -1,8 +1,7 @@
 #include "charuco_pose_estimator.h"
-#include "Eigen/src/Geometry/Transform.h"
 #include "charuco_board.h"
 
-#include <Eigen/Geometry>
+#include <gtsam/geometry/Pose3.h>
 #include <opencv2/core/eigen.hpp>
 
 
@@ -21,17 +20,15 @@ CharucoPoseEstimator::CharucoPoseEstimator(
 }
 
 
-Eigen::Isometry3d cv_to_eigen(cv::Vec3d& rvec, cv::Vec3d& tvec) {
+gtsam::Pose3 cv_to_gtsam(cv::Vec3d& rvec, cv::Vec3d& tvec) {
     cv::Mat R;
     cv::Rodrigues(rvec, R);
-
-    Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();
-    Eigen::Matrix3d rotation_eigen = pose.rotation();
-    cv::cv2eigen(R, rotation_eigen);
-    pose.linear() = rotation_eigen;
-    pose.translation().x() = tvec[0];
-    pose.translation().y() = tvec[1];
-    pose.translation().z() = tvec[2];
+    gtsam::Matrix3 rot_mat;
+    cv::cv2eigen(R, rot_mat);
+    
+    gtsam::Pose3 pose = gtsam::Pose3(
+        gtsam::Rot3(rot_mat), 
+        gtsam::Point3(tvec[0], tvec[1], tvec[2]));
 
     return pose;
 }
@@ -71,7 +68,7 @@ void CharucoPoseEstimator::detect_corners(
 }
 
 
-std::optional<Eigen::Isometry3d> CharucoPoseEstimator::estimate_board_pose(
+std::optional<gtsam::Pose3> CharucoPoseEstimator::estimate_board_pose(
     cv::Mat& annotated,
     std::vector<cv::Point2f>& image_points,
     std::vector<int>& charuco_ids) 
@@ -100,14 +97,14 @@ std::optional<Eigen::Isometry3d> CharucoPoseEstimator::estimate_board_pose(
         return {};
     }
 
-    Eigen::Isometry3d pose = cv_to_eigen(rvec, tvec);
+    gtsam::Pose3 pose = cv_to_gtsam(rvec, tvec);
     draw_board_pose(pose, annotated);
 
     return pose;
 }
 
 
-std::optional<Eigen::Isometry3d> CharucoPoseEstimator::process(const cv::Mat& frame, cv::Mat& annotated) {
+std::optional<gtsam::Pose3> CharucoPoseEstimator::process(const cv::Mat& frame, cv::Mat& annotated) {
     frame.copyTo(annotated);
 
     std::vector<cv::Point2f> charuco_corners;
@@ -132,17 +129,16 @@ double CharucoPoseEstimator::board_width() const {
 }
 
 
-void eigen_to_cv(const Eigen::Isometry3d& pose, cv::Mat& R_out, cv::Vec3d& t_out) {
-    Eigen::Matrix3d R = pose.rotation();
-    cv::eigen2cv(R, R_out);
-    Eigen::Vector3d t = pose.translation();
+void gtsam_to_cv(const gtsam::Pose3& pose, cv::Mat& R_out, cv::Vec3d& t_out) {
+    cv::eigen2cv(pose.rotation().matrix(), R_out);
+    gtsam::Point3 t = pose.translation();
     t_out = cv::Vec3d(t.x(), t.y(), t.z());
 }
 
 
-void CharucoPoseEstimator::draw_board_pose(const Eigen::Isometry3d& pose, cv::Mat& image) const {
+void CharucoPoseEstimator::draw_board_pose(const gtsam::Pose3& pose, cv::Mat& image) const {
     cv::Mat R;
     cv::Vec3d t;
-    eigen_to_cv(pose, R, t);
+    gtsam_to_cv(pose, R, t);
     cv::drawFrameAxes(image, camera_matrix_, distortion_coeffs_, R, t, 0.1f);
 }

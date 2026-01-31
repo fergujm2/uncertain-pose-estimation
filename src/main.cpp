@@ -1,19 +1,11 @@
-#include <memory>
-#include <rclcpp/logging.hpp>
+#include <gtsam/geometry/Pose3.h>
+#include <gtsam/geometry/Quaternion.h>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/subscription.hpp>
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #include <cv_bridge/cv_bridge.hpp>
-
-#include <Eigen/Geometry>
-
-#include <opencv2/aruco/charuco.hpp>
-#include <opencv2/aruco/dictionary.hpp>
-#include <opencv2/highgui.hpp>
-#include <opencv2/videoio.hpp>
-#include <opencv2/core/eigen.hpp>
 
 #include "charuco_pose_estimator.h"
 
@@ -115,7 +107,7 @@ void PoseEstimatorNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr m
 
     // Do the pose estimation
     cv::Mat annotated;
-    std::optional<Eigen::Isometry3d> pose = pose_estimator_->process(cv_ptr->image, annotated);
+    std::optional<gtsam::Pose3> pose = pose_estimator_->process(cv_ptr->image, annotated);
 
     // Publish annotated image
     cv_bridge::CvImage out;
@@ -141,14 +133,12 @@ void PoseEstimatorNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr m
     pose_msg.header.stamp = msg->header.stamp;
     pose_msg.header.frame_id = msg->header.frame_id;
     
-    const auto& T = *pose;
-
-    auto t = T.translation();
+    auto t = (*pose).translation();
     pose_msg.pose.pose.position.x = t.x();
     pose_msg.pose.pose.position.y = t.y();
     pose_msg.pose.pose.position.z = t.z();
 
-    Eigen::Quaterniond q(T.rotation());
+    gtsam::Quaternion q = (*pose).rotation().toQuaternion();
     pose_msg.pose.pose.orientation.x = q.x();
     pose_msg.pose.pose.orientation.y = q.y();
     pose_msg.pose.pose.orientation.z = q.z();

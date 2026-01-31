@@ -16,7 +16,7 @@ find_package(OpenCV REQUIRED)
 # Interface library for executables
 add_library(external_libs INTERFACE)
 target_include_directories(external_libs INTERFACE ${GTSAM_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR})
-target_link_libraries(external_libs INTERFACE ${OpenCV_LIBS} ${GTSAM_LIBRARIES})
+target_link_libraries(external_libs INTERFACE ${OpenCV_LIBS} gtsam)
 
 # Charuco board image creation executable
 add_executable(create_charuco_target
