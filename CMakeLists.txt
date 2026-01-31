@@ -39,7 +39,7 @@ install(
 # Charuco tracker executable
 add_executable(charuco_tracker
   src/main.cpp
-  src/charuco_detector.cpp
+  src/charuco_pose_estimator.cpp
 )
 
 target_compile_features(charuco_tracker PUBLIC c_std_99 cxx_std_17)

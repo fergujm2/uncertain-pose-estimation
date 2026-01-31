@@ -20,7 +20,7 @@ int main(int argc, char **argv)
         "Generating ChArUco board image with %s: square_size=%.4f, %dx%d at %d dpi",
         aruco_dict_name.c_str(), square_size, squares_x, squares_y, dpi);
 
-    auto board = generateBoard(aruco_dict_name, squares_x, squares_y, square_size);
+    auto board = generate_charuco_board(aruco_dict_name, squares_x, squares_y, square_size);
 
     cv::Mat image;
     board->draw(

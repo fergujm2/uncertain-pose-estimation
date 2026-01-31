@@ -1,3 +1,5 @@
+#include <memory>
+#include <rclcpp/logging.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/subscription.hpp>
@@ -13,7 +15,7 @@
 #include <opencv2/videoio.hpp>
 #include <opencv2/core/eigen.hpp>
 
-#include "charuco_detector.h"
+#include "charuco_pose_estimator.h"
 
 
 class PoseEstimatorNode : public rclcpp::Node {
@@ -31,11 +33,12 @@ private:
     int squares_y_;
 
     std::optional<sensor_msgs::msg::CameraInfo> camera_info_;
-    std::unique_ptr<ChArUcoDetector> target_detector_;
+    std::unique_ptr<CharucoPoseEstimator> pose_estimator_;
 
     std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Image>> image_sub_;
     std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::CameraInfo>> camera_info_sub_;
     std::shared_ptr<rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>> pose_pub_;
+    std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::Image>> image_pub_;
 };
 
 
@@ -48,7 +51,6 @@ PoseEstimatorNode::PoseEstimatorNode()
     squares_y_ = this->declare_parameter<int>("squares_y", 7);
     square_size_ = this->declare_parameter<double>("square_size", 0.1);
 
-
     image_sub_ = create_subscription<sensor_msgs::msg::Image>(
         "/pose_estimator/test_camera/image_rect", 1, 
         std::bind(&PoseEstimatorNode::image_callback, this, std::placeholders::_1));
@@ -58,14 +60,13 @@ PoseEstimatorNode::PoseEstimatorNode()
         std::bind(&PoseEstimatorNode::camera_info_callback, this, std::placeholders::_1));
 
     pose_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/pose_estimator/pose", 1);
-
-    cv::namedWindow("pose_estimation", cv::WINDOW_NORMAL);
+    image_pub_ = create_publisher<sensor_msgs::msg::Image>("/pose_estimator/annotated_image", 1);
 }
 
 
 void PoseEstimatorNode::camera_info_callback(sensor_msgs::msg::CameraInfo::ConstSharedPtr msg) {
     // If target detector is  already initialized, ignore msg
-    if (target_detector_) {
+    if (pose_estimator_) {
         return;
     }
 
@@ -79,7 +80,7 @@ void PoseEstimatorNode::camera_info_callback(sensor_msgs::msg::CameraInfo::Const
 
     // using rectified image, so no distortion
     cv::Mat distortion_coeffs({0.0, 0.0, 0.0, 0.0, 0.0});
-    target_detector_ = std::make_unique<ChArUcoDetector>(
+    pose_estimator_ = std::make_unique<CharucoPoseEstimator>(
         aruco_dict_name_, 
         squares_x_, 
         squares_y_, 
@@ -93,7 +94,7 @@ void PoseEstimatorNode::camera_info_callback(sensor_msgs::msg::CameraInfo::Const
 
 void PoseEstimatorNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr msg) {
     // If we don't have a target detector yet, igore msg
-    if (!target_detector_) {
+    if (!pose_estimator_) {
         RCLCPP_WARN_THROTTLE(
             get_logger(),
             *get_clock(),
@@ -114,19 +115,46 @@ void PoseEstimatorNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr m
 
     // Do the pose estimation
     cv::Mat annotated;
-    auto pose = target_detector_->process(cv_ptr->image, annotated);
+    std::optional<Eigen::Isometry3d> pose = pose_estimator_->process(cv_ptr->image, annotated);
 
-    if (pose) {
-        target_detector_->drawPose(*pose, annotated);
-        cv::imshow("pose_estimation", annotated);
-    } else {
-        cv::imshow("pose_estimation", cv_ptr->image);
+    // Publish annotated image
+    cv_bridge::CvImage out;
+    out.header = msg->header;
+    out.encoding = "bgr8";
+    out.image = annotated;
+
+    image_pub_->publish(*out.toImageMsg());
+
+    // Dont publish if the pose is bad
+    if (!pose) {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(),
+            *get_clock(),
+            1000,   // ms
+            "Charuco pose estimation failed"
+        );
+        return;
     }
 
-    cv::waitKey(1);
+    // Publish pose
+    geometry_msgs::msg::PoseWithCovarianceStamped pose_msg;
+    pose_msg.header.stamp = msg->header.stamp;
+    pose_msg.header.frame_id = msg->header.frame_id;
+    
+    const auto& T = *pose;
 
+    auto t = T.translation();
+    pose_msg.pose.pose.position.x = t.x();
+    pose_msg.pose.pose.position.y = t.y();
+    pose_msg.pose.pose.position.z = t.z();
 
-    // TODO publish results
+    Eigen::Quaterniond q(T.rotation());
+    pose_msg.pose.pose.orientation.x = q.x();
+    pose_msg.pose.pose.orientation.y = q.y();
+    pose_msg.pose.pose.orientation.z = q.z();
+    pose_msg.pose.pose.orientation.w = q.w();
+
+    pose_pub_->publish(pose_msg);
 }
 
 

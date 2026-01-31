@@ -13,9 +13,9 @@
 // };
 
 
-class ChArUcoDetector {
+class CharucoPoseEstimator {
 public:
-    ChArUcoDetector(
+    CharucoPoseEstimator(
         const std::string& aruco_dict_name, 
         int squares_x, 
         int squares_y, 
@@ -25,12 +25,23 @@ public:
 
     std::optional<Eigen::Isometry3d> process(const cv::Mat& frame, cv::Mat& annotated);
 
-    double boardHeight() const;
-    double boardWidth() const;
+    double board_height() const;
 
-    void drawPose(const Eigen::Isometry3d& pose, cv::Mat& image) const;
+    double board_width() const;
 
 private:
+    void detect_corners(
+        cv::Mat& annotated, 
+        std::vector<cv::Point2f>& charuco_corners,
+        std::vector<int>& charuco_ids);
+    
+    std::optional<Eigen::Isometry3d> estimate_board_pose(
+        cv::Mat& annotated,
+        std::vector<cv::Point2f>& charuco_corners,
+        std::vector<int>& charuco_ids);
+
+    void draw_board_pose(const Eigen::Isometry3d& pose, cv::Mat& image) const;
+
     cv::Ptr<cv::aruco::DetectorParameters> params_ = cv::aruco::DetectorParameters::create();
     cv::Ptr<cv::aruco::CharucoBoard> board_;
 

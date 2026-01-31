@@ -35,7 +35,7 @@ inline int aruco_enum_from_string(const std::string& name) {
 }
 
 
-inline cv::Ptr<cv::aruco::CharucoBoard> generateBoard(
+inline cv::Ptr<cv::aruco::CharucoBoard> generate_charuco_board(
     const std::string& aruco_dict_name, 
     int squares_x, 
     int squares_y,
