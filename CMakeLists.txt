@@ -18,28 +18,10 @@ add_library(external_libs INTERFACE)
 target_include_directories(external_libs INTERFACE ${GTSAM_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR})
 target_link_libraries(external_libs INTERFACE ${OpenCV_LIBS} gtsam)
 
-# Charuco board image creation executable
-add_executable(create_charuco_target
-  src/create_charuco_target.cpp
-)
-
-target_include_directories(create_charuco_target PRIVATE src)
-target_compile_features(create_charuco_target PUBLIC c_std_99 cxx_std_17)
-target_link_libraries(create_charuco_target external_libs)
-
-ament_target_dependencies(create_charuco_target
-    rclcpp
-)
-
-install(
-  TARGETS create_charuco_target
-  DESTINATION lib/${PROJECT_NAME}
-)
-
 # Charuco tracker executable
 add_executable(charuco_tracker
   src/main.cpp
-  src/charuco_pose_estimator.cpp
+  src/pose_estimator_node.cpp
   src/corner_factor.cpp
 )
 
@@ -81,8 +63,17 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# Other directory installs
 install(
   DIRECTORY test_data
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
 )
 

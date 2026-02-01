@@ -1,0 +1,10 @@
+charuco_tracker:
+  ros__parameters:
+    image_rect_topic: "/pose_estimator/test_camera/image_rect"
+    camera_info_topic: "/pose_estimator/test_camera/camera_info"
+    aruco_dictionary: "DICT_6X6_50"
+    image_dpi: 300
+    squares_x: 5
+    squares_y: 7
+    square_size: 0.05
+    pixel_noise_sigma: 1.0
