@@ -1,5 +1,6 @@
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/Quaternion.h>
+#include <rclcpp/logging.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/subscription.hpp>
@@ -18,6 +19,8 @@ private:
     void camera_info_callback(sensor_msgs::msg::CameraInfo::ConstSharedPtr msg);
 
     void image_callback(sensor_msgs::msg::Image::ConstSharedPtr msg);
+
+    void log_results(const Pose3Gaussian& pose, int elapsed_ms) const;
 
     std::string aruco_dict_name_;
     double square_size_;
@@ -84,13 +87,53 @@ void PoseEstimatorNode::camera_info_callback(sensor_msgs::msg::CameraInfo::Const
 }
 
 
+void PoseEstimatorNode::log_results(const Pose3Gaussian& pose, int elapsed_ms) const {
+
+    const auto& t = pose.mean.translation();
+    const auto& R = pose.mean.rotation().matrix();  // 3x3 rotation matrix
+
+    double rx_std = std::sqrt(pose.covariance(0,0));
+    double ry_std = std::sqrt(pose.covariance(1,1));
+    double rz_std = std::sqrt(pose.covariance(2,2));
+
+    double tx_std = std::sqrt(pose.covariance(3,3));
+    double ty_std = std::sqrt(pose.covariance(4,4));
+    double tz_std = std::sqrt(pose.covariance(5,5));
+
+    RCLCPP_INFO_THROTTLE(
+        get_logger(),
+        *get_clock(),
+        500.0,
+        "\n===== Pose Estimate (%d ms elapsed)=====\n"
+        "Position (mean, std) [m]:\n"
+        "    x: %9.5f  ,  %9.5f\n"
+        "    y: %9.5f  ,  %9.5f\n"
+        "    z: %9.5f  ,  %9.5f\n"
+        "Rotation matrix (mean):\n"
+        "    [ %6.3f, %6.3f, %6.3f ]\n"
+        "    [ %6.3f, %6.3f, %6.3f ]\n"
+        "    [ %6.3f, %6.3f, %6.3f ]\n"
+        "Rotation std dev [rad]:\n"
+        "    roll : %6.3f\n"
+        "    pitch: %6.3f\n"
+        "    yaw  : %6.3f\n"
+        "=========================",
+        elapsed_ms,
+        t.x(), tx_std,
+        t.y(), ty_std,
+        t.z(), tz_std,
+        R(0,0), R(0,1), R(0,2),
+        R(1,0), R(1,1), R(1,2),
+        R(2,0), R(2,1), R(2,2),
+        rx_std, ry_std, rz_std
+    );
+}
+
+
 void PoseEstimatorNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr msg) {
     // If we don't have a target detector yet, igore msg
     if (!pose_estimator_) {
-        RCLCPP_WARN_THROTTLE(
-            get_logger(),
-            *get_clock(),
-            1000,
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
             "Waiting for camera_info before processing images");
         return;
     }
@@ -104,12 +147,14 @@ void PoseEstimatorNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr m
         return;
     }
 
-
     // Do the pose estimation
+    auto start = std::chrono::high_resolution_clock::now();
     cv::Mat annotated;
     std::optional<Pose3Gaussian> pose = pose_estimator_->process(cv_ptr->image, annotated);
+    auto end = std::chrono::high_resolution_clock::now();
+    int elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-    // Publish annotated image
+    // Publish annotated image no matter what
     cv_bridge::CvImage out;
     out.header = msg->header;
     out.encoding = "bgr8";
@@ -128,7 +173,9 @@ void PoseEstimatorNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr m
         return;
     }
 
-    // Publish pose
+    // Log/publish pose
+    log_results(*pose, elapsed_ms);
+
     geometry_msgs::msg::PoseWithCovarianceStamped pose_msg;
     pose_msg.header.stamp = msg->header.stamp;
     pose_msg.header.frame_id = msg->header.frame_id;
