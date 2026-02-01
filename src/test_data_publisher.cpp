@@ -11,9 +11,9 @@
 #include <opencv2/calib3d.hpp>
 
 
-class TestPublisherNode : public rclcpp::Node {
+class TestDataPublisherNode : public rclcpp::Node {
 public:
-    TestPublisherNode();
+    TestDataPublisherNode();
 
 private:
     void timer_callback();
@@ -39,12 +39,12 @@ private:
 };
 
 
-TestPublisherNode::TestPublisherNode() 
+TestDataPublisherNode::TestDataPublisherNode() 
 :
-    rclcpp::Node("pose_estimator_node")
+    rclcpp::Node("test_data_publisher")
 {
     timer_ = this->create_wall_timer(std::chrono::milliseconds(1000),
-        std::bind(&TestPublisherNode::timer_callback, this));
+        std::bind(&TestDataPublisherNode::timer_callback, this));
     
     camera_info_pub_ = create_publisher<sensor_msgs::msg::CameraInfo>("/pose_estimator/test_camera/camera_info", 1);
     image_rect_pub_ = create_publisher<sensor_msgs::msg::Image>("/pose_estimator/test_camera/image_rect", 1);
@@ -57,7 +57,7 @@ TestPublisherNode::TestPublisherNode()
 }
 
 
-void TestPublisherNode::init_camera_info() {
+void TestDataPublisherNode::init_camera_info() {
     // Camera calibration from files in data dir
     K_ = (cv::Mat_<double>(3,3) << 
         494.05852697357193, 0.0, 290.91913816163384,
@@ -107,9 +107,9 @@ void TestPublisherNode::init_camera_info() {
 }
 
 
-void TestPublisherNode::load_images() {
+void TestDataPublisherNode::load_images() {
     // Get path to installed images
-    std::filesystem::path pkg_share = ament_index_cpp::get_package_share_directory("bayesian_pose_estimation");
+    std::filesystem::path pkg_share = ament_index_cpp::get_package_share_directory("probabilistic_pose_estimation");
     std::filesystem::path images_dir = pkg_share / "test_data" / "images";
 
     if (!std::filesystem::exists(images_dir) || !std::filesystem::is_directory(images_dir)) {
@@ -136,7 +136,7 @@ void TestPublisherNode::load_images() {
 }
 
 
-void TestPublisherNode::timer_callback() {
+void TestDataPublisherNode::timer_callback() {
     static size_t img_index = 0;
 
     if (image_raw_.empty()) {
@@ -173,7 +173,7 @@ void TestPublisherNode::timer_callback() {
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
 
-    auto node = std::make_shared<TestPublisherNode>();
+    auto node = std::make_shared<TestDataPublisherNode>();
     
     rclcpp::spin(node);
 

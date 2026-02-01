@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(bayesian_pose_estimation)
+project(probabilistic_pose_estimation)
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
@@ -19,17 +19,17 @@ target_include_directories(external_libs INTERFACE ${GTSAM_INCLUDE_DIR} ${EIGEN3
 target_link_libraries(external_libs INTERFACE ${OpenCV_LIBS} gtsam)
 
 # Charuco tracker executable
-add_executable(charuco_tracker
+add_executable(pose_estimator
   src/main.cpp
   src/pose_estimator_node.cpp
   src/corner_factor.cpp
 )
 
-target_compile_features(charuco_tracker PUBLIC c_std_99 cxx_std_17)
-target_include_directories(charuco_tracker PRIVATE src)
-target_link_libraries(charuco_tracker external_libs)
+target_compile_features(pose_estimator PUBLIC c_std_99 cxx_std_17)
+target_include_directories(pose_estimator PRIVATE src)
+target_link_libraries(pose_estimator external_libs)
 
-ament_target_dependencies(charuco_tracker
+ament_target_dependencies(pose_estimator
     rclcpp
     geometry_msgs
     sensor_msgs
@@ -38,20 +38,20 @@ ament_target_dependencies(charuco_tracker
 )
 
 install(
-  TARGETS charuco_tracker
+  TARGETS pose_estimator
   DESTINATION lib/${PROJECT_NAME}
 )
 
 # Test image/camera info publisher
-add_executable(test_publisher
-  src/test_publisher.cpp
+add_executable(test_data_publisher
+  src/test_data_publisher.cpp
 )
 
-target_compile_features(test_publisher PUBLIC c_std_99 cxx_std_17)
-target_include_directories(test_publisher PRIVATE src)
-target_link_libraries(test_publisher external_libs)
+target_compile_features(test_data_publisher PUBLIC c_std_99 cxx_std_17)
+target_include_directories(test_data_publisher PRIVATE src)
+target_link_libraries(test_data_publisher external_libs)
 
-ament_target_dependencies(test_publisher
+ament_target_dependencies(test_data_publisher
     rclcpp
     sensor_msgs
     cv_bridge
@@ -59,7 +59,7 @@ ament_target_dependencies(test_publisher
 )
 
 install(
-  TARGETS test_publisher
+  TARGETS test_data_publisher
   DESTINATION lib/${PROJECT_NAME}
 )
 

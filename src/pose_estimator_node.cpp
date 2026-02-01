@@ -15,7 +15,7 @@
 
 PoseEstimatorNode::PoseEstimatorNode() 
 :
-    rclcpp::Node("charuco_tracker"), 
+    rclcpp::Node("pose_estimator"), 
     distortion_coeffs_({0.0, 0.0, 0.0, 0.0, 0.0})
 {
     // Init ChArUco board from params
@@ -23,23 +23,25 @@ PoseEstimatorNode::PoseEstimatorNode()
     int squares_x = this->declare_parameter<int>("squares_x");
     int squares_y = this->declare_parameter<int>("squares_y");
     double square_size = this->declare_parameter<double>("square_size");
-    int image_dpi = this->declare_parameter<int>("image_dpi");
     board_ = generate_charuco_board(aruco_dict_name, squares_x, squares_y, square_size);
 
-    RCLCPP_INFO(this->get_logger(),
-        "Creating ChArUco board image with %s: square_size=%.4f, %dx%d at %d dpi",
-        aruco_dict_name.c_str(), square_size, squares_x, squares_y, image_dpi);
-
-    // Save the board to file for printing, etc.
+    // Save the board to file for debugging, etc
     cv::Mat image;
-    board_->draw(
-        cv::Size(image_dpi * squares_x / 2, image_dpi * squares_y),
-        image,
-        100,
-        1
-    );
+    int pixels_per_square = 300;
+    cv::Size size(pixels_per_square * squares_x, pixels_per_square * squares_y);
+    board_->draw(size, image, 100, 1);
 
-    cv::imwrite("calibration_target.png", image);
+    std::ostringstream ss;
+    ss << "target_board_"
+        << aruco_dict_name << "_"
+        << squares_x << "x" << squares_y << ".png";
+
+    std::string filename = ss.str();
+    cv::imwrite(filename, image);
+    RCLCPP_INFO(get_logger(), 
+        "Saved target ChArUco board image to file: %s\n"
+        "Ensure that your physical board matches this image!", 
+        filename.c_str());
 
     // Init pixel noise model from params
     double pixel_noise_sigma = this->declare_parameter<double>("pixel_noise_sigma");

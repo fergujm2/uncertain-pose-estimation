@@ -4,4 +4,5 @@
 
 *.vscode
 
-*calibration_target.png
+# Debug target board automatically generated 
+*target_board_DICT_*
