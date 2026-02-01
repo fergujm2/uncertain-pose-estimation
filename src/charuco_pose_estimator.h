@@ -7,10 +7,10 @@
 #include <gtsam/base/Matrix.h>
 
 
-// struct Pose3Gaussian {
-//     gtsam::Pose3 mean;
-//     gtsam::Matrix6 covariance;
-// };
+struct Pose3Gaussian {
+    gtsam::Pose3 mean;
+    gtsam::Matrix6 covariance;
+};
 
 
 class CharucoPoseEstimator {
@@ -20,16 +20,12 @@ public:
         int squares_x, 
         int squares_y, 
         double square_size, 
-        cv::Mat camera_matrix, 
-        cv::Mat distortion_coeffs);
+        cv::Mat camera_matrix,
+        double pixel_noise_sigma);
 
-    std::optional<gtsam::Pose3> process(
+    std::optional<Pose3Gaussian> process(
         const cv::Mat& frame,
         cv::Mat& annotated);
-
-    double board_height() const;
-
-    double board_width() const;
 
 private:
     void detect_corners(
@@ -37,10 +33,15 @@ private:
         std::vector<cv::Point2f>& charuco_corners,
         std::vector<int>& charuco_ids);
     
-    std::optional<gtsam::Pose3> estimate_board_pose(
+    std::optional<Pose3Gaussian> estimate_board_pose(
         cv::Mat& annotated,
-        std::vector<cv::Point2f>& charuco_corners,
-        std::vector<int>& charuco_ids);
+        std::vector<cv::Point2f>& points_2d,
+        std::vector<cv::Point3f>& points_3d);
+    
+    Pose3Gaussian optimize_pose(
+        const std::vector<cv::Point3f>& points_3d,
+        const std::vector<cv::Point2f>& points_2d,
+        const gtsam::Pose3& pose_init);
 
     void draw_board_pose(const gtsam::Pose3& pose, cv::Mat& image) const;
 
@@ -49,4 +50,5 @@ private:
 
     cv::Mat camera_matrix_;
     cv::Mat distortion_coeffs_;
+    double pixel_noise_sigma_;
 };

@@ -1,7 +1,14 @@
 #include "charuco_pose_estimator.h"
 #include "charuco_board.h"
+#include "corner_factor.h"
 
 #include <gtsam/geometry/Pose3.h>
+#include <gtsam/linear/NoiseModel.h>
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
+#include <gtsam/nonlinear/Symbol.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+#include <gtsam/nonlinear/Marginals.h>
+
 #include <opencv2/core/eigen.hpp>
 
 
@@ -10,14 +17,14 @@ CharucoPoseEstimator::CharucoPoseEstimator(
     int squares_x,
     int squares_y,
     double square_size, 
-    cv::Mat camera_matrix, 
-    cv::Mat distortion_coeffs)
+    cv::Mat camera_matrix,
+    double pixel_noise_sigma)
 :
+    pixel_noise_sigma_(pixel_noise_sigma),
     camera_matrix_(camera_matrix),
-    distortion_coeffs_(distortion_coeffs)
-{
-    board_ = generate_charuco_board(aruco_dict_name, squares_x, squares_y, square_size);
-}
+    distortion_coeffs_({0.0, 0.0, 0.0, 0.0, 0.0}),
+    board_(generate_charuco_board(aruco_dict_name, squares_x, squares_y, square_size))
+{}
 
 
 gtsam::Pose3 cv_to_gtsam(cv::Vec3d& rvec, cv::Vec3d& tvec) {
@@ -68,23 +75,60 @@ void CharucoPoseEstimator::detect_corners(
 }
 
 
-std::optional<gtsam::Pose3> CharucoPoseEstimator::estimate_board_pose(
-    cv::Mat& annotated,
-    std::vector<cv::Point2f>& image_points,
-    std::vector<int>& charuco_ids) 
+Pose3Gaussian CharucoPoseEstimator::optimize_pose(
+    const std::vector<cv::Point3f>& board_points,
+    const std::vector<cv::Point2f>& image_points,
+    const gtsam::Pose3& pose_init)
 {
-    // Extract 3D points from charuco corner ids
-    std::vector<cv::Point3f> board_points;
-    board_points.reserve(charuco_ids.size());
-    for (size_t i = 0; i < charuco_ids.size(); ++i)
-        board_points.push_back(board_->chessboardCorners[charuco_ids[i]]);
+    using namespace gtsam;
+    
+    NonlinearFactorGraph graph;
+    Key pose_key = gtsam::Symbol('T', 0);
 
+    Cal3_S2 intrinsics(
+        camera_matrix_.at<double>(0,0), // fx
+        camera_matrix_.at<double>(1,1), // fy
+        camera_matrix_.at<double>(0,1), // skew
+        camera_matrix_.at<double>(0,2), // cx
+        camera_matrix_.at<double>(1,2)  // cy
+    );
+    
+    SharedDiagonal pixel_noise = noiseModel::Isotropic::Sigma(2, pixel_noise_sigma_);
+
+    for (int i = 0; i < image_points.size(); i++) {
+        Point3 point3 = Point3(board_points[i].x, board_points[i].y, board_points[i].z);
+        Point2 point2 = Point2(image_points[i].x, image_points[i].y);
+
+        graph.add(CornerFactor(pose_key, point3, point2, intrinsics, pixel_noise));
+    }
+
+    Values values;
+    values.insert(pose_key, pose_init);
+
+    LevenbergMarquardtOptimizer opimizer(graph, values);
+    values = opimizer.optimize();
+    Marginals marginals(graph, values);
+
+    Pose3Gaussian result;
+    result.mean = values.at<Pose3>(pose_key);
+    result.covariance = marginals.marginalCovariance(pose_key);
+
+    return result;
+}
+
+
+std::optional<Pose3Gaussian> CharucoPoseEstimator::estimate_board_pose(
+    cv::Mat& annotated,
+    std::vector<cv::Point2f>& points_2d,
+    std::vector<cv::Point3f>& points_3d) 
+{
     // Use EPnP method for fast linear solve, good initialization for gtsam
+    // Note that we assume zero distortion throughout, i.e. using rectified images
     cv::Vec3d rvec;
     cv::Vec3d tvec;
     bool valid = cv::solvePnP(
-        board_points,
-        image_points,
+        points_3d,
+        points_2d,
         camera_matrix_,
         distortion_coeffs_,
         rvec,
@@ -93,39 +137,38 @@ std::optional<gtsam::Pose3> CharucoPoseEstimator::estimate_board_pose(
         cv::SOLVEPNP_EPNP   // fast linear
     );
 
-    if (!valid) {
-        return {};
-    }
+    // Return if solution wasnt valid
+    if (!valid) return {};
 
-    gtsam::Pose3 pose = cv_to_gtsam(rvec, tvec);
-    draw_board_pose(pose, annotated);
+    // Now use gtsam optimizer to locally refine and get uncertainty
+    gtsam::Pose3 pose_init = cv_to_gtsam(rvec, tvec);
+    Pose3Gaussian pose = optimize_pose(points_3d, points_2d, pose_init);
+
+    // Draw onto annotated image before return
+    draw_board_pose(pose.mean, annotated);
 
     return pose;
 }
 
 
-std::optional<gtsam::Pose3> CharucoPoseEstimator::process(const cv::Mat& frame, cv::Mat& annotated) {
+std::optional<Pose3Gaussian> CharucoPoseEstimator::process(const cv::Mat& frame, cv::Mat& annotated) {
     frame.copyTo(annotated);
 
-    std::vector<cv::Point2f> charuco_corners;
+    std::vector<cv::Point2f> points_2d;
     std::vector<int> charuco_ids;
-    detect_corners(annotated, charuco_corners, charuco_ids);
+    detect_corners(annotated, points_2d, charuco_ids);
 
     // PnP only works with 4 or more points
-    if (charuco_corners.size() < 4)
+    if (points_2d.size() < 4)
         return {};
 
-    return estimate_board_pose(annotated, charuco_corners, charuco_ids);
-}
+    // Extract 3D points from charuco corner ids
+    std::vector<cv::Point3f> points_3d;
+    points_3d.reserve(charuco_ids.size());
+    for (size_t i = 0; i < charuco_ids.size(); ++i)
+        points_3d.push_back(board_->chessboardCorners[charuco_ids[i]]);
 
-
-double CharucoPoseEstimator::board_height() const {
-    return board_->getChessboardSize().height * board_->getSquareLength();
-}
-
-
-double CharucoPoseEstimator::board_width() const {
-    return board_->getChessboardSize().width * board_->getSquareLength();
+    return estimate_board_pose(annotated, points_2d, points_3d);
 }
 
 

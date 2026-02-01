@@ -23,6 +23,7 @@ private:
     double square_size_;
     int squares_x_;
     int squares_y_;
+    double pixel_noise_sigma_;
 
     std::optional<sensor_msgs::msg::CameraInfo> camera_info_;
     std::unique_ptr<CharucoPoseEstimator> pose_estimator_;
@@ -42,6 +43,7 @@ PoseEstimatorNode::PoseEstimatorNode()
     squares_x_ = this->declare_parameter<int>("squares_x", 5);
     squares_y_ = this->declare_parameter<int>("squares_y", 7);
     square_size_ = this->declare_parameter<double>("square_size", 0.1);
+    pixel_noise_sigma_ = this->declare_parameter<double>("pixel_noise_sigma", 1.0);
 
     image_sub_ = create_subscription<sensor_msgs::msg::Image>(
         "/pose_estimator/test_camera/image_rect", 1, 
@@ -70,15 +72,13 @@ void PoseEstimatorNode::camera_info_callback(sensor_msgs::msg::CameraInfo::Const
         }
     }
 
-    // using rectified image, so no distortion
-    cv::Mat distortion_coeffs({0.0, 0.0, 0.0, 0.0, 0.0});
     pose_estimator_ = std::make_unique<CharucoPoseEstimator>(
         aruco_dict_name_, 
         squares_x_, 
         squares_y_, 
         square_size_, 
-        camera_matrix_, 
-        distortion_coeffs);
+        camera_matrix_,
+        pixel_noise_sigma_);
 
     RCLCPP_INFO(get_logger(), "Camera info received, ChArUco detector initialized");
 }
@@ -107,7 +107,7 @@ void PoseEstimatorNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr m
 
     // Do the pose estimation
     cv::Mat annotated;
-    std::optional<gtsam::Pose3> pose = pose_estimator_->process(cv_ptr->image, annotated);
+    std::optional<Pose3Gaussian> pose = pose_estimator_->process(cv_ptr->image, annotated);
 
     // Publish annotated image
     cv_bridge::CvImage out;
@@ -133,17 +133,21 @@ void PoseEstimatorNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr m
     pose_msg.header.stamp = msg->header.stamp;
     pose_msg.header.frame_id = msg->header.frame_id;
     
-    auto t = (*pose).translation();
+    auto t = (*pose).mean.translation();
     pose_msg.pose.pose.position.x = t.x();
     pose_msg.pose.pose.position.y = t.y();
     pose_msg.pose.pose.position.z = t.z();
 
-    gtsam::Quaternion q = (*pose).rotation().toQuaternion();
+    gtsam::Quaternion q = (*pose).mean.rotation().toQuaternion();
     pose_msg.pose.pose.orientation.x = q.x();
     pose_msg.pose.pose.orientation.y = q.y();
     pose_msg.pose.pose.orientation.z = q.z();
     pose_msg.pose.pose.orientation.w = q.w();
 
+    for (int r = 0; r < 6; ++r)
+        for (int c = 0; c < 6; ++c)
+            pose_msg.pose.covariance[r*6 + c] = (*pose).covariance(r, c);
+    
     pose_pub_->publish(pose_msg);
 }
 
