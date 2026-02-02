@@ -48,9 +48,10 @@ Additionally, you should see output like the following showing pose mean and cov
 This is in tangent space Gaussian format where the pose that takes checkerboard coordinates to camera frame coordinates is distributed according to 
 
 ```
-T = T_mean * expmap(dT) where dT ~ N(0, T_cov)
+T = T_mean * expmap(dT),  dT ~ N(0, T_cov).
 ```
 
+where `T_mean` is the `msg.pose.pose` part (i.e. in SE(3)) part and `T_cov` is the local 6x6 covariance matrix in GTSAM's convention where twists have rotation first: `xi = [rot_vec; trans_vec]`.
 ## Setup
 
 1. Select, download, and print a physical ChArUco checkerboard from [calib.io](https://calib.io/pages/camera-calibration-pattern-generator) 
