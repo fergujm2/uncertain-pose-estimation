@@ -45,6 +45,12 @@ Additionally, you should see output like the following showing pose mean and cov
 
 * Estimated pose with covariance: `geometry_msgs::msg::PoseWithCovarianceStamped` at `/pose_estimator/pose`
 
+This is in tangent space Gaussian format where the pose that takes checkerboard coordinates to camera frame coordinates is distributed according to 
+
+```
+T = T_mean * expmap(dT) where dT ~ N(0, T_cov)
+```
+
 ## Setup
 
 1. Select, download, and print a physical ChArUco checkerboard from [calib.io](https://calib.io/pages/camera-calibration-pattern-generator) 
