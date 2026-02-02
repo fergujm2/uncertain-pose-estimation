@@ -62,3 +62,8 @@ This is given in GTSAM's convention where twists have rotation first: `dT = [rot
 3. Ensure that you have a calibrated camera currently publishing rectified image data and its projection matrix.
 4. Determine a good value for your camera's pixel noise, which accounts for all errors involved with detecting corners and projecting points. A good place to start is the reprojection error output by your intrinsic calibration.
 5. Fill out all of the parameters in `config/parameters.yaml`, rebuild and rerun.
+
+## Debugging
+
+Note that the `pose_estimator` node outputs what it is expecting your ChArUco board to look like as a PNG file.
+This is useful for debugging as if your board is not detected, you can compare your physical target with the PNG file.
