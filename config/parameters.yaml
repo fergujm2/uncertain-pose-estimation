@@ -1,9 +1,12 @@
 pose_estimator:
   ros__parameters:
+    # Input data topic for your specific camera, default is test topics
     image_rect_topic: "/pose_estimator/test_camera/image_rect"
     camera_info_topic: "/pose_estimator/test_camera/camera_info"
+    
+    # Parameters used to make board on calib.io
     aruco_dictionary: "DICT_6X6_50"
-    squares_x: 5
+    squares_x: 5  # Dont swap x/y!
     squares_y: 7
-    square_size: 0.05
-    pixel_noise_sigma: 1.0
+    square_size: 0.05  # measure with calipers
+    pixel_noise_sigma: 1.0  # projection error, 1.0 pixels is conservative

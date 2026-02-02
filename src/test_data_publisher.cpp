@@ -109,7 +109,7 @@ void TestDataPublisherNode::init_camera_info() {
 
 void TestDataPublisherNode::load_images() {
     // Get path to installed images
-    std::filesystem::path pkg_share = ament_index_cpp::get_package_share_directory("probabilistic_pose_estimation");
+    std::filesystem::path pkg_share = ament_index_cpp::get_package_share_directory("charuco_pose_estimation");
     std::filesystem::path images_dir = pkg_share / "test_data" / "images";
 
     if (!std::filesystem::exists(images_dir) || !std::filesystem::is_directory(images_dir)) {

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(probabilistic_pose_estimation)
+project(charuco_pose_estimation)
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)

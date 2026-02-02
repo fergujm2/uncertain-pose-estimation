@@ -6,7 +6,7 @@ import os
 
 def generate_launch_description():
 
-    pkg_share = get_package_share_directory('probabilistic_pose_estimation')
+    pkg_share = get_package_share_directory('charuco_pose_estimation')
 
     params_file = os.path.join(
         pkg_share,
@@ -16,7 +16,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         Node(
-            package='probabilistic_pose_estimation',
+            package='charuco_pose_estimation',
             executable='pose_estimator',
             name='pose_estimator',
             parameters=[params_file],
