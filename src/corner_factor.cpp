@@ -26,6 +26,13 @@ Vector CornerFactor::evaluateError(
     Matrix36 d_p_d_pose;
     Point3 p = pose.transformFrom(board_point_, d_p_d_pose);
 
+    // Point is behind the camera, return large error and zero Jacobian to avoid local minima
+    if (p.z() <= 0) {
+        
+        if (H1) { *H1 = Matrix26::Zero(); }
+        return Vector2::Constant(1000.0);
+    }
+    
     // Project to pixels
     Matrix23 d_uv_d_p;
     Point2 uv = camera_.project2(p, std::nullopt, d_uv_d_p);

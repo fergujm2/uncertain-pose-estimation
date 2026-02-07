@@ -114,10 +114,24 @@ Pose3Gaussian PoseEstimatorNode::optimize_board_pose(
 }
 
 
+bool check_points_colinear(const std::vector<cv::Point2f>& pts) {
+    cv::Mat data(pts.size(), 2, CV_64F);
+    for (size_t i = 0; i < pts.size(); ++i) {
+        data.at<double>(i, 0) = pts[i].x;
+        data.at<double>(i, 1) = pts[i].y;
+    }
+
+    cv::PCA pca(data, cv::Mat(), cv::PCA::DATA_AS_ROW);
+    double ratio = pca.eigenvalues.at<double>(1) /
+                   pca.eigenvalues.at<double>(0);
+
+    return ratio < 1e-2;  // threshold
+}
+
+
 std::optional<Pose3Gaussian> PoseEstimatorNode::process_frame(const cv::Mat& frame, cv::Mat& annotated) {
     frame.copyTo(annotated);
 
-    // First detect the aruco markers within the charuco board
     std::vector<int> marker_ids;
     std::vector<std::vector<cv::Point2f>> marker_corners;
     cv::aruco::detectMarkers(annotated, board_->dictionary, marker_corners, marker_ids, params_);
@@ -146,33 +160,35 @@ std::optional<Pose3Gaussian> PoseEstimatorNode::process_frame(const cv::Mat& fra
     cv::Scalar color = cv::Scalar(255, 0, 0);
     cv::aruco::drawDetectedCornersCharuco(annotated, points_2d, {}, color);
 
-    // Pose estimation requires at least 4 corners detected on the board
+    // DLT requires at least 6 corners detected on the board
     int num_corners = points_2d.size();
-    if (num_corners < 4) {
+    if (num_corners < 6) {
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-            "Not enough corners detered in the image: %d < 4", num_corners); 
+            "Not enough corners detected in the image: %d < 4", num_corners); 
         return {};
     }
 
-    // Extract 3D points in board frame from charuco corner ids
-    std::vector<cv::Point3f> points_3d;
-    points_3d.reserve(charuco_ids.size());
-    for (size_t i = 0; i < charuco_ids.size(); ++i)
-        points_3d.push_back(board_->chessboardCorners[charuco_ids[i]]);
+    if (check_points_colinear(points_2d)) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+            "Detected corners are not distributed well, cannot solvePnP"); 
+        return {};
+    }
 
-    // Use EPnP method for fast linear solve, good initialization for optimization
     cv::Vec3d rvec;
     cv::Vec3d tvec;
-    bool valid = cv::solvePnP(
-        points_3d,
+    bool valid = cv::aruco::estimatePoseCharucoBoard(
         points_2d,
+        charuco_ids,
+        board_,
         *camera_matrix_cv_,
         distortion_coeffs_,
         rvec,
-        tvec,
-        false,
-        cv::SOLVEPNP_EPNP   // fast linear
+        tvec
     );
+
+    if (!valid) {
+        return {};
+    }
 
     // Return if solution wasnt valid
     if (!valid) {
@@ -183,10 +199,26 @@ std::optional<Pose3Gaussian> PoseEstimatorNode::process_frame(const cv::Mat& fra
 
     // Now use gtsam optimizer to locally refine and get uncertainty
     gtsam::Pose3 pose_init = cv_to_gtsam(rvec, tvec);
-    Pose3Gaussian pose = optimize_board_pose(points_3d, points_2d, pose_init);
-    draw_board_pose(pose.mean, annotated);
 
-    return pose;
+    // This may throw an exception if optimization fails, catch and return empty optional
+    try {
+        // Extract 3D points in board frame from charuco corner ids
+        std::vector<cv::Point3f> points_3d;
+        points_3d.reserve(charuco_ids.size());
+        for (size_t i = 0; i < charuco_ids.size(); ++i)
+            points_3d.push_back(board_->chessboardCorners[charuco_ids[i]]);
+
+        Pose3Gaussian pose = optimize_board_pose(points_3d, points_2d, pose_init);
+        draw_board_pose(pose.mean, annotated);
+        
+        return pose;
+    } catch (const gtsam::IndeterminantLinearSystemException& e) {
+        RCLCPP_ERROR(get_logger(), "Optimization failed: %s", e.what());
+        return {};
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(get_logger(), "Unexpected error during optimization: %s", e.what());
+        return {};
+    }
 }
 
 
@@ -201,7 +233,12 @@ void PoseEstimatorNode::draw_board_pose(const gtsam::Pose3& pose, cv::Mat& image
     cv::Mat R;
     cv::Vec3d t;
     gtsam_to_cv(pose, R, t);
-    cv::drawFrameAxes(image, *camera_matrix_cv_, distortion_coeffs_, R, t, 0.1f);
+
+    // Axis length: square length times min of num squares in x/y
+    cv::Size sz = board_->getChessboardSize();
+    float axis_length = std::min(sz.width, sz.height) * board_->getSquareLength();
+
+    cv::drawFrameAxes(image, *camera_matrix_cv_, distortion_coeffs_, R, t, axis_length);
 }
 
 
@@ -323,7 +360,7 @@ void PoseEstimatorNode::image_callback(sensor_msgs::msg::Image::ConstSharedPtr m
 
     geometry_msgs::msg::PoseWithCovarianceStamped pose_msg;
     pose_msg.header.stamp = msg->header.stamp;
-    pose_msg.header.frame_id = msg->header.frame_id;
+    pose_msg.header.frame_id = "world";  // TODO: make this a param
     
     auto t = pose->mean.translation();
     pose_msg.pose.pose.position.x = t.x();
